@@ -1,4 +1,4 @@
-import AppShell from "@/components/Appshell";
+import AppShell from "@/components/AppShell";
 import { Card, CardContent } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";

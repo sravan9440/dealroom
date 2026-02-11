@@ -1,73 +1,121 @@
-import AppShell from "@/components/Appshell";
-import { Card, CardContent } from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import SignOutButton from "@/components/SignOutButton";
+import AppShell from "@/components/AppShell";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import SubmitButton from "@/components/SubmitButton";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, PlusCircle } from "lucide-react";
 
-export default async function DashboardPage() {
+export default async function NewDealPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const sp = await searchParams;
+
   const supabase = await createClient();
-
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) redirect("/login");
 
-  const { data: deals, error } = await supabase
-    .from("deals")
-    .select("id,title,scope_summary,status,public_slug,created_at")
-    .order("created_at", { ascending: false });
+  async function createDealAction(formData: FormData) {
+    "use server";
 
-  if (error) {
-    // If RLS or schema mismatch, you'll see it here
-    throw new Error(error.message);
+    const title = String(formData.get("title") || "").trim();
+    const scope_summary = String(formData.get("scope_summary") || "").trim();
+
+    if (!title) redirect("/deals/new?error=" + encodeURIComponent("Deal title is required"));
+
+    const supabase = await createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) redirect("/login");
+
+    const { data, error } = await supabase
+      .from("deals")
+      .insert({
+        owner_id: userData.user.id,
+        title,
+        scope_summary: scope_summary || null,
+      })
+      .select("id")
+      .single();
+
+    if (error) redirect("/deals/new?error=" + encodeURIComponent(error.message));
+
+    redirect(`/deals/${data.id}`);
   }
 
-return (
-  <AppShell
-    title="Dashboard"
-    subtitle="Manage your deals & milestones"
-    action={
-      <Link href="/deals/new">
-        <Button>+ New Deal</Button>
-      </Link>
-    }
-  >
-    {!deals || deals.length === 0 ? (
-      <Card>
-        <CardContent className="space-y-2">
-          <p className="text-slate-700">No deals yet.</p>
-          <Link href="/deals/new" className="inline-block">
-            <Button>Create your first deal</Button>
-          </Link>
+  return (
+    <AppShell
+      title="Create Deal"
+      subtitle="Set the deal scope clearly — it reduces disputes later."
+      action={
+        <Link href="/dashboard">
+          <Button variant="outline" className="rounded-2xl">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+        </Link>
+      }
+    >
+      {sp?.error && (
+        <Card className="rounded-2xl border-destructive/40">
+          <CardContent className="p-4 text-sm">
+            <span className="font-semibold">Error:</span> {sp.error}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle>Deal details</CardTitle>
+          <CardDescription>
+            You can add milestones next. Client approvals + receipts will happen on the public link.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent>
+          <form action={createDealAction} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Deal title</label>
+              <Input
+                name="title"
+                placeholder="Example: Website redesign for ABC"
+                className="rounded-xl"
+              />
+              <p className="text-xs text-muted-foreground">
+                Keep it specific. This appears on the client link too.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Scope summary (optional)</label>
+              <Textarea
+                name="scope_summary"
+                placeholder="What’s included, what’s not included, and what ‘done’ means..."
+                className="min-h-[140px] rounded-xl"
+              />
+              <p className="text-xs text-muted-foreground">
+                Pro tip: mention revision policy (e.g., 2 rounds included).
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Link href="/dashboard">
+                <Button variant="ghost" className="rounded-2xl" type="button">
+                  Cancel
+                </Button>
+              </Link>
+              <SubmitButton className="rounded-2xl" loadingText="Creating...">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Create deal
+              </SubmitButton>
+            </div>
+          </form>
         </CardContent>
       </Card>
-    ) : (
-      <div className="grid gap-3">
-        {deals.map((d) => (
-          <Link key={d.id} href={`/deals/${d.id}`} className="block">
-            <Card className="hover:shadow-md transition">
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold tracking-tight">{d.title}</h2>
-                  <Badge>{d.status}</Badge>
-                </div>
-
-                {d.scope_summary && (
-                  <p className="text-sm text-slate-600 line-clamp-2">
-                    {d.scope_summary}
-                  </p>
-                )}
-
-                <p className="text-xs text-slate-500">
-                  Created: {new Date(d.created_at).toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
-    )}
-  </AppShell>
-);
+    </AppShell>
+  );
 }
