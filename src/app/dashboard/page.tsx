@@ -2,120 +2,152 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/AppShell";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import SubmitButton from "@/components/SubmitButton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, PlusCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ArrowRight, Briefcase, CheckCircle2, Clock3, PlusCircle } from "lucide-react";
 
-export default async function NewDealPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const sp = await searchParams;
+function statusBadgeClass(status: string) {
+  // subtle but meaningful colors
+  switch (status) {
+    case "active":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900";
+    case "closed":
+      return "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-200 dark:border-slate-800";
+    default:
+      return "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-200 dark:border-slate-800";
+  }
+}
 
+export default async function DashboardPage() {
   const supabase = await createClient();
+
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) redirect("/login");
 
-  async function createDealAction(formData: FormData) {
-    "use server";
+  const { data: deals, error } = await supabase
+    .from("deals")
+    .select("id,title,scope_summary,status,public_slug,created_at")
+    .order("created_at", { ascending: false });
 
-    const title = String(formData.get("title") || "").trim();
-    const scope_summary = String(formData.get("scope_summary") || "").trim();
+  if (error) throw new Error(error.message);
 
-    if (!title) redirect("/deals/new?error=" + encodeURIComponent("Deal title is required"));
-
-    const supabase = await createClient();
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) redirect("/login");
-
-    const { data, error } = await supabase
-      .from("deals")
-      .insert({
-        owner_id: userData.user.id,
-        title,
-        scope_summary: scope_summary || null,
-      })
-      .select("id")
-      .single();
-
-    if (error) redirect("/deals/new?error=" + encodeURIComponent(error.message));
-
-    redirect(`/deals/${data.id}`);
-  }
+  const total = deals?.length ?? 0;
+  const active = deals?.filter((d) => d.status === "active").length ?? 0;
+  const closed = deals?.filter((d) => d.status === "closed").length ?? 0;
 
   return (
     <AppShell
-      title="Create Deal"
-      subtitle="Set the deal scope clearly — it reduces disputes later."
+      title="Dashboard"
+      subtitle="Create deals, track milestones, and collect approvals with receipts."
       action={
-        <Link href="/dashboard">
-          <Button variant="outline" className="rounded-2xl">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+        <Link href="/deals/new">
+          <Button className="rounded-2xl">
+            <PlusCircle className="h-4 w-4 mr-2" />
+            New Deal
           </Button>
         </Link>
       }
     >
-      {sp?.error && (
-        <Card className="rounded-2xl border-destructive/40">
-          <CardContent className="p-4 text-sm">
-            <span className="font-semibold">Error:</span> {sp.error}
-          </CardContent>
+      {/* Stats row */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <Briefcase className="h-4 w-4" /> Total Deals
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold tracking-tight">{total}</CardContent>
         </Card>
-      )}
 
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle>Deal details</CardTitle>
-          <CardDescription>
-            You can add milestones next. Client approvals + receipts will happen on the public link.
-          </CardDescription>
-        </CardHeader>
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <Clock3 className="h-4 w-4" /> Active
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold tracking-tight">{active}</CardContent>
+        </Card>
 
-        <CardContent>
-          <form action={createDealAction} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Deal title</label>
-              <Input
-                name="title"
-                placeholder="Example: Website redesign for ABC"
-                className="rounded-xl"
-              />
-              <p className="text-xs text-muted-foreground">
-                Keep it specific. This appears on the client link too.
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" /> Closed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold tracking-tight">{closed}</CardContent>
+        </Card>
+      </div>
+
+      {/* List */}
+      <div className="mt-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Recent deals</h2>
+          {total > 0 && (
+            <Link href="/deals/new" className="hidden md:block">
+              <Button variant="outline" className="rounded-2xl">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Create
+              </Button>
+            </Link>
+          )}
+        </div>
+
+        {!deals || deals.length === 0 ? (
+          <Card className="rounded-2xl">
+            <CardContent className="py-10 text-center space-y-3">
+              <div className="text-xl font-semibold tracking-tight">No deals yet</div>
+              <p className="text-sm text-muted-foreground">
+                Create your first deal room and add milestones. Then share the client link on WhatsApp.
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Scope summary (optional)</label>
-              <Textarea
-                name="scope_summary"
-                placeholder="What’s included, what’s not included, and what ‘done’ means..."
-                className="min-h-[140px] rounded-xl"
-              />
-              <p className="text-xs text-muted-foreground">
-                Pro tip: mention revision policy (e.g., 2 rounds included).
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Link href="/dashboard">
-                <Button variant="ghost" className="rounded-2xl" type="button">
-                  Cancel
+              <Link href="/deals/new">
+                <Button className="rounded-2xl">
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Create first deal
                 </Button>
               </Link>
-              <SubmitButton className="rounded-2xl" loadingText="Creating...">
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Create deal
-              </SubmitButton>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {deals.map((d) => (
+              <Link key={d.id} href={`/deals/${d.id}`} className="block">
+                <Card className="rounded-2xl hover:shadow-md transition">
+                  <CardContent className="p-5 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <h3 className="text-base md:text-lg font-semibold tracking-tight">
+                          {d.title}
+                        </h3>
+                        {d.scope_summary && (
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {d.scope_summary}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={cn("rounded-full", statusBadgeClass(d.status))}
+                        >
+                          {d.status}
+                        </Badge>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      Created: {new Date(d.created_at).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }
