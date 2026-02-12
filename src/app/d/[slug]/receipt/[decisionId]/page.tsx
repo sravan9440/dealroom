@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { headers } from "next/headers";
 
 export default async function ReceiptPage({
   params,
@@ -29,10 +30,10 @@ export default async function ReceiptPage({
 
   if (!decision) notFound();
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
-
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const host = h.get("host") ?? "localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${proto}://${host}`;
   const receiptUrl = `${baseUrl}/d/${slug}/receipt/${decisionId}`;
 
   const waText =
