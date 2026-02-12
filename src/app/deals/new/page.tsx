@@ -1,22 +1,12 @@
+// src/app/deals/new/page.tsx
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, PlusCircle } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { createClient } from "@/app/lib/supabase/server";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-
-// ✅ IMPORTANT: use the SAME import path as in /deals/[id]/page.tsx
-import { createClient } from "@/lib/supabase/server";
-
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
 
 export default async function NewDealPage({
   searchParams,
@@ -24,81 +14,89 @@ export default async function NewDealPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const sp = await searchParams;
+  const supabase = await createClient();
 
-  async function createDeal(formData: FormData) {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) redirect("/login");
+
+  async function createDealAction(formData: FormData) {
     "use server";
 
     const supabase = await createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) redirect("/login");
 
-    // Optional: protect route
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) redirect("/login");
-
-    const title = String(formData.get("title") || "").trim();
-    const scope_summary = String(formData.get("scope_summary") || "").trim();
+    const title = String(formData.get("title") ?? "").trim();
+    const scope_summary = String(formData.get("scope_summary") ?? "").trim();
 
     if (!title) {
-      redirect("/deals/new?error=" + encodeURIComponent("Deal title is required"));
+      redirect("/deals/new?error=" + encodeURIComponent("Title is required"));
     }
 
-    const base = slugify(title) || "deal";
-    const suffix = Math.random().toString(36).slice(2, 8);
-    const public_slug = `${base}-${suffix}`;
-
-    const { data, error } = await supabase
+    // NOTE: if your column is not "owner_id", rename it here to match your schema (commonly "user_id")
+    const { data: deal, error } = await supabase
       .from("deals")
       .insert({
         title,
         scope_summary,
         status: "draft",
-        public_slug,
+        owner_id: userData.user.id,
       })
       .select("id")
       .single();
 
-    if (error || !data?.id) {
-      redirect("/deals/new?error=" + encodeURIComponent(error?.message || "Failed to create deal"));
+    if (error || !deal) {
+      redirect("/deals/new?error=" + encodeURIComponent(error?.message ?? "Failed to create deal"));
     }
 
-    redirect(`/deals/${data.id}`);
+    redirect(`/deals/${deal.id}`);
   }
 
   return (
-    <main className="max-w-3xl mx-auto p-6 space-y-6">
+    <div className="mx-auto max-w-3xl p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:underline">
-          <ArrowLeft className="h-4 w-4" /> Back
+        <Link href="/dashboard" className="text-sm underline">
+          ← Back
         </Link>
       </div>
 
       <Card className="rounded-2xl">
         <CardHeader>
-          <CardTitle className="text-2xl">New Deal</CardTitle>
-          <CardDescription>Create a deal, then add milestones on the next page.</CardDescription>
-          {sp?.error ? (
-            <p className="text-sm text-red-600 mt-2">{sp.error}</p>
-          ) : null}
+          <CardTitle>Create a new deal</CardTitle>
+          <CardDescription>Start with a title and quick scope summary.</CardDescription>
         </CardHeader>
 
-        <CardContent>
-          <form action={createDeal} className="space-y-4">
+        <CardContent className="space-y-4">
+          {sp?.error ? (
+            <div className="rounded-xl border p-3 text-sm">
+              {sp.error}
+            </div>
+          ) : null}
+
+          <form action={createDealAction} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
-              <Input name="title" placeholder="e.g., Website redesign for ABC" />
+              <label className="text-sm font-medium">Deal title</label>
+              <Input name="title" placeholder="e.g., Website + Payments + Admin Panel" />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Scope summary (optional)</label>
-              <Textarea name="scope_summary" placeholder="Short scope / notes..." />
+              <label className="text-sm font-medium">Scope summary</label>
+              <Textarea
+                name="scope_summary"
+                placeholder="1–3 lines: what you’re building, key deliverables, timeline hints…"
+                className="min-h-[120px]"
+              />
             </div>
 
-            <Button type="submit" className="w-full md:w-auto">
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Create Deal
-            </Button>
+            <div className="flex gap-3">
+              <Button type="submit">Create Deal</Button>
+              <Link href="/dashboard" className="text-sm underline self-center">
+                Cancel
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }
